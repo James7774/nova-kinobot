@@ -8,12 +8,17 @@ from handlers.user import user_router
 from handlers.admin import admin_router
 from database.db import init_db
 
+from aiohttp import web
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+async def handle_health_check(request):
+    return web.Response(text="Bot is running!")
 
 async def main():
     # Initialize database
@@ -27,8 +32,16 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(user_router)
     
+    # Start web server for Render health check
+    app = web.Application()
+    app.router.add_get("/", handle_health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080)))
+    await site.start()
+    
     # Start polling
-    logger.info("Bot started!")
+    logger.info(f"Bot started! Health check server on port {os.getenv('PORT', 8080)}")
     try:
         await dp.start_polling(bot)
     finally:
@@ -39,3 +52,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Bot stopped!")
+
