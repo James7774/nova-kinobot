@@ -26,7 +26,9 @@ async def init_db():
                 file_type TEXT DEFAULT 'video',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 views_count INTEGER DEFAULT 0,
-                expires_at TIMESTAMP
+                expires_at TIMESTAMP,
+                storage_channel_id TEXT,
+                storage_message_id INTEGER
             )
         ''')
         await db.commit()
@@ -57,12 +59,12 @@ async def update_user_requests(telegram_id, count, date):
         await db.execute('UPDATE users SET daily_requests = ?, last_request_date = ? WHERE telegram_id = ?', (count, date, telegram_id))
         await db.commit()
 
-async def add_video(code, title, quality, file_id, file_type='video', expires_at=None):
+async def add_video(code, title, quality, file_id, file_type='video', expires_at=None, storage_channel_id=None, storage_message_id=None):
     async with aiosqlite.connect(DATABASE_NAME) as db:
         await db.execute('''
-            INSERT INTO videos (code, title, quality, file_id, file_type, expires_at) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (code, title, quality, file_id, file_type, expires_at))
+            INSERT INTO videos (code, title, quality, file_id, file_type, expires_at, storage_channel_id, storage_message_id) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (code, title, quality, file_id, file_type, expires_at, storage_channel_id, storage_message_id))
         await db.commit()
 
 async def get_video_by_code(code):
@@ -70,14 +72,14 @@ async def get_video_by_code(code):
         # Filter out expired videos
         now = datetime.now()
         async with db.execute('''
-            SELECT title, quality, file_id, views_count, id, file_type FROM videos 
+            SELECT title, quality, file_id, views_count, id, file_type, storage_channel_id, storage_message_id FROM videos 
             WHERE code = ? AND (expires_at IS NULL OR expires_at > ?)
         ''', (code, now)) as cursor:
             return await cursor.fetchall()
 
-async def increment_views(file_id):
+async def increment_views(video_id):
     async with aiosqlite.connect(DATABASE_NAME) as db:
-        await db.execute('UPDATE videos SET views_count = views_count + 1 WHERE file_id = ?', (file_id,))
+        await db.execute('UPDATE videos SET views_count = views_count + 1 WHERE id = ?', (video_id,))
         await db.commit()
 
 async def delete_code(code):
@@ -101,7 +103,7 @@ async def search_videos_by_title(query):
 
 async def get_video_by_id(video_id):
     async with aiosqlite.connect(DATABASE_NAME) as db:
-        async with db.execute('SELECT file_id, quality, title, views_count, file_type FROM videos WHERE id = ?', (video_id,)) as cursor:
+        async with db.execute('SELECT file_id, quality, title, views_count, file_type, storage_channel_id, storage_message_id FROM videos WHERE id = ?', (video_id,)) as cursor:
             return await cursor.fetchone()
 
 async def get_global_stats():

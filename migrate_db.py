@@ -23,6 +23,14 @@ def migrate():
         print("Adding 'expires_at' column to 'videos' table...")
         cursor.execute("ALTER TABLE videos ADD COLUMN expires_at TIMESTAMP")
 
+    if 'storage_channel_id' not in columns:
+        print("Adding 'storage_channel_id' column to 'videos' table...")
+        cursor.execute("ALTER TABLE videos ADD COLUMN storage_channel_id TEXT")
+
+    if 'storage_message_id' not in columns:
+        print("Adding 'storage_message_id' column to 'videos' table...")
+        cursor.execute("ALTER TABLE videos ADD COLUMN storage_message_id INTEGER")
+
     # Check users table columns
     cursor.execute("PRAGMA table_info(users)")
     columns = [column[1] for column in cursor.fetchall()]

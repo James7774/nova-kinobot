@@ -1,4 +1,4 @@
-from aiogram import Router, F, types
+from aiogram import Router, F, types, Bot
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta
@@ -81,11 +81,13 @@ async def cb_admin_add(callback: types.CallbackQuery, state: FSMContext):
 async def process_admin_code(message: types.Message, state: FSMContext):
     await state.update_data(code=message.text)
     await message.answer(
-        f"📹 Endi `{message.text}` kodi uchun video faylni yuboring:\n\n"
-        f"⚠️ **Eslatma:** Kino katta bo'lib chiqishi uchun uni **Video** ko'rinishida yuboring (fayl emas).",
+        f"✅ Kod saqlandi: `{message.text}`\n\n"
+        f"Endi ushbu kod uchun kinoni yuboring. Sizda 2 xil yo'l bor:\n\n"
+        f"1️⃣ **Fayl yuborish:** Kinoni to'g'ridan-to'g'ri shu yerga yuboring (Video ko'rinishida).\n"
+        f"2️⃣ **Kanal orqali:** Saqlash kanalidagi postni shu yerga **forward** qiling yoki post **linkini** yuboring (t.me/kanal/123).",
         parse_mode="Markdown"
     )
-    await state.set_state(AdminStates.waiting_for_video)
+    await state.set_state(AdminStates.waiting_for_channel_post)
 
 @admin_router.message(Command("add"))
 async def cmd_add(message: types.Message, command: CommandObject, state: FSMContext):
@@ -111,8 +113,83 @@ async def cmd_add(message: types.Message, command: CommandObject, state: FSMCont
                     expires_at = datetime.now() + timedelta(days=int(val))
 
     await state.update_data(code=code, expires_at=expires_at)
-    await message.answer(f"📹 Iltimos, `{code}` kodi uchun video faylni yuboring:", parse_mode="Markdown")
-    await state.set_state(AdminStates.waiting_for_video)
+    await message.answer(
+        f"✅ Kod saqlandi: `{code}`\n\n"
+        f"Endi ushbu kod uchun kinoni yuboring (forward qiling, link yuboring yoki video fayl yuboring):",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.waiting_for_channel_post)
+
+@admin_router.message(AdminStates.waiting_for_channel_post)
+async def process_channel_post(message: types.Message, state: FSMContext, bot: Bot):
+    storage_channel_id = None
+    storage_message_id = None
+    file_id = None
+    file_type = 'video'
+
+    # Option A: Forwarded message
+    if message.forward_from_chat:
+        storage_channel_id = message.forward_from_chat.id
+        storage_message_id = message.forward_from_message_id
+    # Option B: Link
+    elif message.text and ("t.me/" in message.text):
+        link = message.text
+        # Patterns: https://t.me/username/123 or https://t.me/c/123456789/123
+        match = re.search(r"t\.me/(?:c/)?([^/]+)/(\d+)", link)
+        if match:
+            channel_part = match.group(1)
+            storage_message_id = int(match.group(2))
+            if channel_part.isdigit() or channel_part.startswith('-100'):
+                # Private channel ID in link
+                if not channel_part.startswith('-100'):
+                    storage_channel_id = int(f"-100{channel_part}")
+                else:
+                    storage_channel_id = int(channel_part)
+            else:
+                # Public channel username
+                storage_channel_id = f"@{channel_part}"
+    
+    # Option C: Direct Video/File Upload
+    if not storage_channel_id:
+        if message.video:
+            file_id = message.video.file_id
+            file_type = 'video'
+        elif message.document and (message.document.mime_type and message.document.mime_type.startswith('video')):
+            file_id = message.document.file_id
+            file_type = 'document'
+        elif message.document:
+            file_id = message.document.file_id
+            file_type = 'document'
+        elif message.animation:
+            file_id = message.animation.file_id
+            file_type = 'animation'
+        
+        if not file_id and not storage_channel_id:
+            await message.answer("❌ Xatolik! Iltimos, kanal postini forward qiling, link yuboring yoki video fayl yuboring.")
+            return
+
+    # Validate if channel post is accessible
+    if storage_channel_id and storage_message_id:
+        try:
+            # Try to copy message to admin as a test
+            test_msg = await bot.copy_message(
+                chat_id=message.from_user.id,
+                from_chat_id=storage_channel_id,
+                message_id=storage_message_id
+            )
+            await test_msg.delete()
+        except Exception as e:
+            await message.answer(f"❌ Xatolik! Bot ushbu kanalga yoki postga kira olmayapti.\nSabab: {e}")
+            return
+
+    await state.update_data(
+        storage_channel_id=str(storage_channel_id) if storage_channel_id else None,
+        storage_message_id=storage_message_id,
+        file_id=file_id,
+        file_type=file_type
+    )
+    await message.answer("📝 Video haqida ma'lumot kiriting (bu foydalanuvchiga caption sifatida ko'rinadi):")
+    await state.set_state(AdminStates.waiting_for_title)
 
 @admin_router.message(AdminStates.waiting_for_video)
 async def process_video(message: types.Message, state: FSMContext):
@@ -155,9 +232,11 @@ async def process_title(message: types.Message, state: FSMContext):
         code=data['code'],
         title=description, # Saving custom info as 'title'
         quality="", 
-        file_id=data['file_id'],
+        file_id=data.get('file_id'),
         file_type=data.get('file_type', 'video'),
-        expires_at=data.get('expires_at')
+        expires_at=data.get('expires_at'),
+        storage_channel_id=data.get('storage_channel_id'),
+        storage_message_id=data.get('storage_message_id')
     )
     
     await message.answer(f"✅ Video `{data['code']}` kodi bilan muvaffaqiyatli qo'shildi.", parse_mode="Markdown")

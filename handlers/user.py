@@ -153,32 +153,56 @@ async def process_code(message: types.Message, state: FSMContext, bot: Bot):
     if not videos:
         await message.answer(t['not_found'])
     else:
-        # Send the first available video immediately as requested
-        # video format: (title, quality, file_id, views_count, id, file_type)
-        title, quality, file_id, views_count, video_id, file_type = videos[0]
+        # video format: (title, quality, file_id, views_count, id, file_type, storage_channel_id, storage_message_id)
+        title, quality, file_id, views_count, video_id, file_type, storage_channel_id, storage_message_id = videos[0]
         
         caption = f"{title}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
 
         try:
-            if file_type == 'video':
-                await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
-            elif file_type == 'document':
-                await message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
-            elif file_type == 'animation':
-                await message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML")
-            else:
-                await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+            if storage_channel_id and storage_message_id:
+                # Instant delivery via copyMessage
+                try:
+                    await bot.copy_message(
+                        chat_id=message.from_user.id,
+                        from_chat_id=storage_channel_id,
+                        message_id=storage_message_id,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                    await increment_views(video_id)
+                    await state.clear()
+                    return
+                except Exception as e:
+                    logger.error(f"copyMessage failed: {e}. Falling back to forwardMessage.")
+                    try:
+                        await bot.forward_message(
+                            chat_id=message.from_user.id,
+                            from_chat_id=storage_channel_id,
+                            message_id=storage_message_id
+                        )
+                        await increment_views(video_id)
+                        await state.clear()
+                        return
+                    except Exception as e2:
+                        logger.error(f"forwardMessage failed: {e2}")
             
-            await increment_views(file_id)
+            # Fallback or direct file delivery
+            if file_id:
+                if file_type == 'video':
+                    await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+                elif file_type == 'document':
+                    await message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
+                elif file_type == 'animation':
+                    await message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML")
+                else:
+                    await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+                
+                await increment_views(video_id)
+            else:
+                await message.answer("❌ Kinoni yuborishda xatolik yuz berdi (Fayl topilmadi).")
         except Exception as e:
-            logger.error(f"Error sending file {file_id}: {e}")
-            # Fallback
-            try:
-                await message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
-                await increment_views(file_id)
-            except Exception as e2:
-                logger.error(f"Fallback sending failed: {e2}")
-                await message.answer("❌ Videoni yuborishda xatolik yuz berdi.")
+            logger.error(f"Error sending file: {e}")
+            await message.answer("❌ Videoni yuborishda xatolik yuz berdi.")
         
     await state.clear()
     return
@@ -243,28 +267,44 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
         await callback.answer("❌ Video topilmadi!")
         return
         
-    file_id, quality, title, views_count, file_type = video_data
+    # video format: (file_id, quality, title, views_count, file_type, storage_channel_id, storage_message_id)
+    file_id, quality, title, views_count, file_type, storage_channel_id, storage_message_id = video_data
     
     caption = f"{title}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
     
-    # Send based on file type
     try:
-        if file_type == 'video':
-            await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
-        elif file_type == 'document':
-            await callback.message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
-        elif file_type == 'animation':
-            await callback.message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML")
+        if storage_channel_id and storage_message_id:
+            try:
+                await bot.copy_message(
+                    chat_id=callback.from_user.id,
+                    from_chat_id=storage_channel_id,
+                    message_id=storage_message_id,
+                    caption=caption,
+                    parse_mode="HTML"
+                )
+                await increment_views(video_id)
+                await callback.answer()
+                return
+            except Exception as e:
+                logger.error(f"cb copyMessage failed: {e}")
+
+        # Send based on file type
+        if file_id:
+            if file_type == 'video':
+                await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+            elif file_type == 'document':
+                await callback.message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
+            elif file_type == 'animation':
+                await callback.message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML")
+            else:
+                await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
         else:
-            await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+            await callback.answer("❌ Video topilmadi (Storage error)")
+            return
     except Exception as e:
         logger.error(f"Error sending video {video_id}: {e}")
-        try:
-            await callback.message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
-        except Exception as e2:
-            logger.error(f"Fallback sending failed: {e2}")
-            await callback.answer("❌ Videoni yuborishda xatolik yuz berdi.")
-            return
+        await callback.answer("❌ Videoni yuborishda xatolik yuz berdi.")
+        return
 
-    await increment_views(file_id)
+    await increment_views(video_id)
     await callback.answer()
