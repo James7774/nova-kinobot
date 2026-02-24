@@ -56,3 +56,22 @@ def get_subscribe_keyboard(lang, missing_channels=None):
     builder.row(InlineKeyboardButton(text=t['btn_check_sub'], callback_data="check_subscription"))
     return builder.as_markup()
 
+def get_video_share_keyboard(bot_username, video_id, avg_rating=0, count=0):
+    builder = InlineKeyboardBuilder()
+    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}"
+    
+    rating_text = f"⭐ {avg_rating} ({count} ta ovoz)" if count > 0 else "⭐ Baho berish"
+    builder.row(InlineKeyboardButton(text=rating_text, callback_data=f"rate_video:{video_id}"))
+    
+    builder.row(InlineKeyboardButton(text="♻️ Do'stlarga ulashish", url=share_url))
+    builder.row(InlineKeyboardButton(text="❌", callback_data="delete_msg"))
+    return builder.as_markup()
+
+def get_rating_selection_keyboard(video_id):
+    builder = InlineKeyboardBuilder()
+    for i in range(1, 6):
+        builder.add(InlineKeyboardButton(text="⭐" * i, callback_data=f"set_rate:{video_id}:{i}"))
+    builder.row(InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"back_to_video:{video_id}"))
+    builder.adjust(1)
+    return builder.as_markup()
+

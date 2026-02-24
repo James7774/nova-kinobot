@@ -47,6 +47,17 @@ def migrate():
         print("Adding 'last_request_date' column to 'users' table...")
         cursor.execute("ALTER TABLE users ADD COLUMN last_request_date DATE")
 
+    # Ratings table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_id INTEGER,
+            user_id INTEGER,
+            rating INTEGER,
+            UNIQUE(video_id, user_id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
     print("Migration completed.")

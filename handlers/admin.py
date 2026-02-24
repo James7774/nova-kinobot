@@ -34,27 +34,40 @@ async def cmd_admin(message: types.Message):
 
 @admin_router.message(F.text == "🎬 Kino qo'shish")
 async def btn_admin_add(message: types.Message, state: FSMContext):
+    await state.clear()
     await message.answer("🔢 Kino uchun kodni kiriting (masalan: 123):")
     await state.set_state(AdminStates.waiting_for_code)
 
 @admin_router.message(F.text == "🗑 Kinoni o'chirish")
 async def btn_admin_delete_start(message: types.Message, state: FSMContext) :
+    await state.clear()
     await message.answer("🗑 O'chirmoqchi bo'lgan kino kodini yuboring:")
     await state.set_state(AdminStates.waiting_for_code_delete)
 
 @admin_router.message(F.text == "📜 Kinolar ro'yxati")
-async def btn_admin_list(message: types.Message):
+async def btn_admin_list(message: types.Message, state: FSMContext):
+    await state.clear()
     codes = await get_all_codes()
     if not codes:
         await message.answer("📭 Hozircha kinolar qo'shilmagan.")
     else:
         text = "📜 **Barcha kinolar:**\n\n"
+        messages = []
         for code, title in codes:
-            text += f"• `{code}` - {title}\n"
-        await message.answer(text, parse_mode="Markdown")
+            line = f"• `{code}` - {title}\n"
+            if len(text) + len(line) > 4000:
+                messages.append(text)
+                text = "📜 **Davomi:**\n\n" + line
+            else:
+                text += line
+        messages.append(text)
+        
+        for msg in messages:
+            await message.answer(msg, parse_mode="Markdown")
 
 @admin_router.message(F.text == "📊 Statistika")
-async def btn_admin_stats(message: types.Message):
+async def btn_admin_stats(message: types.Message, state: FSMContext):
+    await state.clear()
     users, videos = await get_global_stats()
     await message.answer(
         f"📊 **Bot Statistikasi:**\n\n"
@@ -79,6 +92,17 @@ async def cb_admin_add(callback: types.CallbackQuery, state: FSMContext):
 
 @admin_router.message(AdminStates.waiting_for_code)
 async def process_admin_code(message: types.Message, state: FSMContext):
+    # Check for menu buttons
+    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+    if message.text in menu_buttons or (message.text and message.text.startswith('/')):
+        await state.clear()
+        if message.text == "📜 Kinolar ro'yxati": return await btn_admin_list(message, state)
+        if message.text == "📊 Statistika": return await btn_admin_stats(message, state)
+        if message.text == "🎬 Kino qo'shish": return await btn_admin_add(message, state)
+        if message.text == "🗑 Kinoni o'chirish": return await btn_admin_delete_start(message, state)
+        if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
+        return
+
     await state.update_data(code=message.text)
     await message.answer(
         f"✅ Kod saqlandi: `{message.text}`\n\n"
@@ -165,6 +189,25 @@ async def process_channel_post(message: types.Message, state: FSMContext, bot: B
             file_type = 'animation'
         
         if not file_id and not storage_channel_id:
+            # Check if this is a menu button click to avoid error message
+            menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+            if message.text in menu_buttons or message.text.startswith('/'):
+                await state.clear()
+                # Re-trigger the appropriate handler by sending the message again to the router
+                # In aiogram 3, we can't easily re-trigger but we can just handle it here
+                if message.text == "📜 Kinolar ro'yxati":
+                    return await btn_admin_list(message, state)
+                elif message.text == "📊 Statistika":
+                    return await btn_admin_stats(message, state)
+                elif message.text == "🎬 Kino qo'shish":
+                    return await btn_admin_add(message, state)
+                elif message.text == "🗑 Kinoni o'chirish":
+                    return await btn_admin_delete_start(message, state)
+                elif message.text == "👤 Foydalanuvchi rejimi":
+                    return await btn_user_mode(message, state)
+                # If command, let other handlers handle it after clearing state
+                return
+
             await message.answer("❌ Xatolik! Iltimos, kanal postini forward qiling, link yuboring yoki video fayl yuboring.")
             return
 
@@ -191,46 +234,25 @@ async def process_channel_post(message: types.Message, state: FSMContext, bot: B
     await message.answer("📝 Video haqida ma'lumot kiriting (bu foydalanuvchiga caption sifatida ko'rinadi):")
     await state.set_state(AdminStates.waiting_for_title)
 
-@admin_router.message(AdminStates.waiting_for_video)
-async def process_video(message: types.Message, state: FSMContext):
-    logger.info(f"Message received from admin {message.from_user.id} in waiting_for_video state. Content type: {message.content_type}")
-    
-    file_id = None
-    file_type = 'video'
-    
-    if message.video:
-        file_id = message.video.file_id
-        file_type = 'video'
-    elif message.document and (message.document.mime_type and message.document.mime_type.startswith('video')):
-        file_id = message.document.file_id
-        file_type = 'document'
-    elif message.document:
-        # Accept any document if needed, but warning
-        file_id = message.document.file_id
-        file_type = 'document'
-    elif message.animation:
-        file_id = message.animation.file_id
-        file_type = 'animation'
-    elif message.video_note:
-        file_id = message.video_note.file_id
-        file_type = 'video_note'
-    
-    if not file_id:
-        await message.answer("❌ Iltimos, faqat video fayl yuboring! (Siz yuborgan narsa video deb topilmadi)")
-        return
-        
-    await state.update_data(file_id=file_id, file_type=file_type)
-    await message.answer("📝 Video haqida ma'lumot kiriting (bu foydalanuvchiga caption sifatida ko'rinadi):")
-    await state.set_state(AdminStates.waiting_for_title)
-
 @admin_router.message(AdminStates.waiting_for_title)
 async def process_title(message: types.Message, state: FSMContext):
+    # Check for menu buttons
+    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+    if message.text in menu_buttons or (message.text and message.text.startswith('/')):
+        await state.clear()
+        if message.text == "📜 Kinolar ro'yxati": return await btn_admin_list(message, state)
+        if message.text == "📊 Statistika": return await btn_admin_stats(message, state)
+        if message.text == "🎬 Kino qo'shish": return await btn_admin_add(message, state)
+        if message.text == "🗑 Kinoni o'chirish": return await btn_admin_delete_start(message, state)
+        if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
+        return
+
     data = await state.get_data()
-    description = message.text # This is the full custom text from admin
+    description = message.text
     
     await add_video(
         code=data['code'],
-        title=description, # Saving custom info as 'title'
+        title=description,
         quality="", 
         file_id=data.get('file_id'),
         file_type=data.get('file_type', 'video'),
@@ -242,41 +264,45 @@ async def process_title(message: types.Message, state: FSMContext):
     await message.answer(f"✅ Video `{data['code']}` kodi bilan muvaffaqiyatli qo'shildi.", parse_mode="Markdown")
     await state.clear()
 
-@admin_router.callback_query(F.data == "admin_list")
-async def cb_admin_list(callback: types.CallbackQuery):
-    codes = await get_all_codes()
-    if not codes:
-        await callback.message.answer("📭 Hozircha kinolar qo'shilmagan.")
-    else:
-        text = "📜 **Barcha kinolar:**\n\n"
-        for code, title in codes:
-            text += f"• `{code}` - {title}\n"
-        await callback.message.answer(text, parse_mode="Markdown")
-    await callback.answer()
-
-@admin_router.callback_query(F.data == "admin_stats")
-async def cb_admin_stats(callback: types.CallbackQuery):
-    users, videos = await get_global_stats()
-    await callback.message.answer(
-        f"📊 **Bot Statistikasi:**\n\n"
-        f"👤 Foydalanuvchilar: {users}\n"
-        f"🎬 Kinolar: {videos}\n",
-        parse_mode="Markdown"
-    )
-    await callback.answer()
-
-@admin_router.callback_query(F.data == "admin_delete")
-async def cb_admin_delete_start(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("🗑 O'chirmoqchi bo'lgan kino kodini yuboring:")
-    await state.set_state(AdminStates.waiting_for_code_delete)
-    await callback.answer()
-
 @admin_router.message(AdminStates.waiting_for_code_delete)
 async def process_admin_delete(message: types.Message, state: FSMContext):
+    # Check for menu buttons
+    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+    if message.text in menu_buttons or (message.text and message.text.startswith('/')):
+        await state.clear()
+        if message.text == "📜 Kinolar ro'yxati": return await btn_admin_list(message, state)
+        if message.text == "📊 Statistika": return await btn_admin_stats(message, state)
+        if message.text == "🎬 Kino qo'shish": return await btn_admin_add(message, state)
+        if message.text == "🗑 Kinoni o'chirish": return await btn_admin_delete_start(message, state)
+        if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
+        return
+
     code = message.text
     await delete_code(code)
     await message.answer(f"✅ Kod `{code}` muvaffaqiyatli o'chirildi.", parse_mode="Markdown")
     await state.clear()
+
+@admin_router.callback_query(F.data == "admin_add")
+async def cb_admin_add(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer("🔢 Kino uchun kodni kiriting (masalan: 123):")
+    await state.set_state(AdminStates.waiting_for_code)
+    await callback.answer()
+
+@admin_router.callback_query(F.data == "admin_list")
+async def cb_admin_list(callback: types.CallbackQuery, state: FSMContext):
+    await btn_admin_list(callback.message, state)
+    await callback.answer()
+
+@admin_router.callback_query(F.data == "admin_stats")
+async def cb_admin_stats(callback: types.CallbackQuery, state: FSMContext):
+    await btn_admin_stats(callback.message, state)
+    await callback.answer()
+
+@admin_router.callback_query(F.data == "admin_delete")
+async def cb_admin_delete_start_cb(callback: types.CallbackQuery, state: FSMContext):
+    await btn_admin_delete_start(callback.message, state)
+    await callback.answer()
 
 @admin_router.message(Command("delete"))
 async def cmd_delete(message: types.Message, command: CommandObject):

@@ -31,6 +31,15 @@ async def init_db():
                 storage_message_id INTEGER
             )
         ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS ratings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER,
+                user_id INTEGER,
+                rating INTEGER,
+                UNIQUE(video_id, user_id)
+            )
+        ''')
         await db.commit()
 
 async def add_user(telegram_id, username):
@@ -112,5 +121,22 @@ async def get_global_stats():
             total_users = (await cursor.fetchone())[0]
         async with db.execute('SELECT COUNT(*) FROM videos') as cursor:
             total_videos = (await cursor.fetchone())[0]
-        # For simplicity, returning just these for now
         return total_users, total_videos
+
+async def add_rating(video_id, user_id, rating):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        await db.execute('''
+            INSERT OR REPLACE INTO ratings (video_id, user_id, rating)
+            VALUES (?, ?, ?)
+        ''', (video_id, user_id, rating))
+        await db.commit()
+
+async def get_rating_stats(video_id):
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute('''
+            SELECT AVG(rating), COUNT(rating) FROM ratings WHERE video_id = ?
+        ''', (video_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row and row[1] > 0:
+                return round(row[0], 1), row[1]
+            return 0, 0

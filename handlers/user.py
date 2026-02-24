@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 from database.db import (
     add_user, get_user_stats, update_user_requests, 
     get_video_by_code, get_video_by_id, increment_views, search_videos_by_title,
-    get_user_language, set_user_language
+    get_user_language, set_user_language, add_rating, get_rating_stats
 )
 import math
 
@@ -23,7 +23,8 @@ def format_size(bytes):
     return f"{s} {size_name[i]}"
 from keyboards.inline import (
     get_main_menu, get_quality_keyboard, 
-    get_subscribe_keyboard, get_language_keyboard
+    get_subscribe_keyboard, get_language_keyboard,
+    get_video_share_keyboard, get_rating_selection_keyboard
 )
 from keyboards.reply import get_admin_reply_keyboard
 from utils.states import UserStates
@@ -157,6 +158,8 @@ async def process_code(message: types.Message, state: FSMContext, bot: Bot):
         title, quality, file_id, views_count, video_id, file_type, storage_channel_id, storage_message_id = videos[0]
         
         caption = f"{title}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
+        avg_rating, count = await get_rating_stats(video_id)
+        kb = get_video_share_keyboard((await bot.get_me()).username, video_id, avg_rating, count)
 
         try:
             if storage_channel_id and storage_message_id:
@@ -167,7 +170,8 @@ async def process_code(message: types.Message, state: FSMContext, bot: Bot):
                         from_chat_id=storage_channel_id,
                         message_id=storage_message_id,
                         caption=caption,
-                        parse_mode="HTML"
+                        parse_mode="HTML",
+                        reply_markup=kb
                     )
                     await increment_views(video_id)
                     await state.clear()
@@ -189,13 +193,13 @@ async def process_code(message: types.Message, state: FSMContext, bot: Bot):
             # Fallback or direct file delivery
             if file_id:
                 if file_type == 'video':
-                    await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+                    await message.answer_video(video=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
                 elif file_type == 'document':
-                    await message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
+                    await message.answer_document(document=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
                 elif file_type == 'animation':
-                    await message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML")
+                    await message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
                 else:
-                    await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+                    await message.answer_video(video=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
                 
                 await increment_views(video_id)
             else:
@@ -271,6 +275,8 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
     file_id, quality, title, views_count, file_type, storage_channel_id, storage_message_id = video_data
     
     caption = f"{title}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
+    avg_rating, count = await get_rating_stats(video_id)
+    kb = get_video_share_keyboard((await bot.get_me()).username, video_id, avg_rating, count)
     
     try:
         if storage_channel_id and storage_message_id:
@@ -280,7 +286,8 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
                     from_chat_id=storage_channel_id,
                     message_id=storage_message_id,
                     caption=caption,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
+                    reply_markup=kb
                 )
                 await increment_views(video_id)
                 await callback.answer()
@@ -291,13 +298,13 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
         # Send based on file type
         if file_id:
             if file_type == 'video':
-                await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+                await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
             elif file_type == 'document':
-                await callback.message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
+                await callback.message.answer_document(document=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
             elif file_type == 'animation':
-                await callback.message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML")
+                await callback.message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
             else:
-                await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+                await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
         else:
             await callback.answer("❌ Video topilmadi (Storage error)")
             return
@@ -307,4 +314,41 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
         return
 
     await increment_views(video_id)
+    await callback.answer()
+
+@user_router.callback_query(F.data == "delete_msg")
+async def cb_delete_msg(callback: types.CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        await callback.answer("❌ Xatolik: Xabarni o'chirib bo'lmadi.")
+    await callback.answer()
+
+@user_router.callback_query(F.data.startswith("rate_video:"))
+async def cb_rate_video_start(callback: types.CallbackQuery, state: FSMContext):
+    video_id = callback.data.split(":")[1]
+    await callback.message.edit_reply_markup(reply_markup=get_rating_selection_keyboard(video_id))
+    await callback.answer()
+
+@user_router.callback_query(F.data.startswith("set_rate:"))
+async def cb_set_rate(callback: types.CallbackQuery, bot: Bot):
+    _, video_id, stars = callback.data.split(":")
+    video_id = int(video_id)
+    stars = int(stars)
+    user_id = callback.from_user.id
+    
+    await add_rating(video_id, user_id, stars)
+    await callback.answer(f"Rahmat! Siz {stars} ball berdingiz.", show_alert=True)
+    
+    # Update keyboard with new stats
+    avg_rating, count = await get_rating_stats(video_id)
+    kb = get_video_share_keyboard((await bot.get_me()).username, video_id, avg_rating, count)
+    await callback.message.edit_reply_markup(reply_markup=kb)
+
+@user_router.callback_query(F.data.startswith("back_to_video:"))
+async def cb_back_to_video(callback: types.CallbackQuery, bot: Bot):
+    video_id = int(callback.data.split(":")[1])
+    avg_rating, count = await get_rating_stats(video_id)
+    kb = get_video_share_keyboard((await bot.get_me()).username, video_id, avg_rating, count)
+    await callback.message.edit_reply_markup(reply_markup=kb)
     await callback.answer()
