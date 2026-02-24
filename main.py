@@ -32,15 +32,19 @@ async def main():
     # Include routers
     dp.include_router(admin_router)
     dp.include_router(user_router)
-    
-    # Start web server for Render health check
-    app = web.Application()
-    app.router.add_get("/", handle_health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080)))
-    await site.start()
-    
+    # Start web server for Render health check (wrapped in try-except to avoid crash on local runs)
+    try:
+        app = web.Application()
+        app.router.add_get("/", handle_health_check)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        port = int(os.getenv("PORT", 8080))
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        logger.info(f"Health check server started on port {port}")
+    except Exception as e:
+        logger.warning(f"Could not start health check server: {e}. If you are running locally, this is normal.")
+
     # Start polling
     logger.info(f"Bot started! Health check server on port {os.getenv('PORT', 8080)}")
     try:

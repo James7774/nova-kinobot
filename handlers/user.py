@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from datetime import datetime, date
 import asyncio
 import logging
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ user_router = Router()
 
 @user_router.message(Command("myid"))
 async def cmd_myid(message: types.Message):
-    await message.answer(f"Sizning Telegram ID: `{message.from_user.id}`", parse_mode="Markdown")
+    await message.answer(f"Sizning Telegram ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
 
 @user_router.message(CommandStart())
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -44,9 +45,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
     # Auto-detect Admin
     if message.from_user.id in ADMINS:
         await message.answer(
-            "👨‍💻 **Admin Panel**\n\nXush kelibsiz, Admin! Quyidagi menyudan foydalanishingiz mumkin:",
+            "👨‍💻 <b>Admin Panel</b>\n\nXush kelibsiz, Admin! Quyidagi menyudan foydalanishingiz mumkin:",
             reply_markup=get_admin_reply_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
         return
 
@@ -75,8 +76,8 @@ async def cb_set_lang(callback: types.CallbackQuery, bot: Bot, state: FSMContext
     if missing:
         await callback.message.answer(t['sub_required'], reply_markup=get_subscribe_keyboard(lang))
     else:
-        name = callback.from_user.full_name
-        await callback.message.answer(t['welcome'].format(name=name), parse_mode="Markdown")
+        name = html.quote(callback.from_user.full_name)
+        await callback.message.answer(t['welcome'].format(name=name), parse_mode="HTML")
     
     await callback.answer()
 
@@ -102,7 +103,7 @@ async def cb_search_name(callback: types.CallbackQuery, state: FSMContext):
 async def cb_help(callback: types.CallbackQuery):
     lang = await get_user_language(callback.from_user.id)
     t = TEXTS[lang]
-    await callback.message.answer(t['help'], parse_mode="Markdown")
+    await callback.message.answer(t['help'], parse_mode="HTML")
     await callback.answer()
 
 async def check_limit(user_id):
@@ -157,7 +158,7 @@ async def process_code(message: types.Message, state: FSMContext, bot: Bot):
         # video format: (title, quality, file_id, views_count, id, file_type, storage_channel_id, storage_message_id)
         title, quality, file_id, views_count, video_id, file_type, storage_channel_id, storage_message_id = videos[0]
         
-        caption = f"{title}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
+        caption = f"{html.quote(title)}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
         avg_rating, count = await get_rating_stats(video_id)
         kb = get_video_share_keyboard((await bot.get_me()).username, video_id, avg_rating, count)
 
@@ -224,8 +225,8 @@ async def process_search_name(message: types.Message, state: FSMContext):
     else:
         res_list = ""
         for code, title in results:
-            res_list += f"• `{code}` - {title}\n"
-        await message.answer(t['search_results'].format(results=res_list), parse_mode="Markdown")
+            res_list += f"• <code>{code}</code> - {html.quote(title)}\n"
+        await message.answer(t['search_results'].format(results=res_list), parse_mode="HTML")
     
     await state.clear()
 
@@ -242,7 +243,8 @@ async def cb_check_sub(callback: types.CallbackQuery, bot: Bot, state: FSMContex
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer(t['welcome'].format(name=name), parse_mode="Markdown")
+        name = html.quote(callback.from_user.full_name)
+        await callback.message.answer(t['welcome'].format(name=name), parse_mode="HTML")
     else:
         await callback.answer(t['sub_failed'], show_alert=True)
     
@@ -274,7 +276,7 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
     # video format: (file_id, quality, title, views_count, file_type, storage_channel_id, storage_message_id)
     file_id, quality, title, views_count, file_type, storage_channel_id, storage_message_id = video_data
     
-    caption = f"{title}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
+    caption = f"{html.quote(title)}\n\n🤖 <b>Bot:</b> @{(await bot.get_me()).username}"
     avg_rating, count = await get_rating_stats(video_id)
     kb = get_video_share_keyboard((await bot.get_me()).username, video_id, avg_rating, count)
     

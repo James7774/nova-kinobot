@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta
 import logging
 import re
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -15,19 +16,17 @@ from config import ADMINS
 
 admin_router = Router()
 
-# Admin check middleware
-@admin_router.message.middleware()
-async def admin_check(handler, event, data):
-    if event.from_user.id not in ADMINS:
-        return
-    return await handler(event, data)
+# Admin check filter
+admin_router.message.filter(F.from_user.id.in_(ADMINS))
+admin_router.callback_query.filter(F.from_user.id.in_(ADMINS))
+
 
 @admin_router.message(Command("admin"))
 async def cmd_admin(message: types.Message):
     await message.answer(
-        "👨‍💻 **Admin Panel**\n\nQuyidagi menyudan foydalanishingiz mumkin:",
+        "👨‍💻 <b>Admin Panel</b>\n\nQuyidagi menyudan foydalanishingiz mumkin:",
         reply_markup=get_admin_reply_keyboard(),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 # --- Button Handlers ---
@@ -51,29 +50,29 @@ async def btn_admin_list(message: types.Message, state: FSMContext):
     if not codes:
         await message.answer("📭 Hozircha kinolar qo'shilmagan.")
     else:
-        text = "📜 **Barcha kinolar:**\n\n"
+        text = "📜 <b>Barcha kinolar:</b>\n\n"
         messages = []
         for code, title in codes:
-            line = f"• `{code}` - {title}\n"
+            line = f"• <code>{code}</code> - {html.quote(title)}\n"
             if len(text) + len(line) > 4000:
                 messages.append(text)
-                text = "📜 **Davomi:**\n\n" + line
+                text = "📜 <b>Davomi:</b>\n\n" + line
             else:
                 text += line
         messages.append(text)
         
         for msg in messages:
-            await message.answer(msg, parse_mode="Markdown")
+            await message.answer(msg, parse_mode="HTML")
 
 @admin_router.message(F.text == "📊 Statistika")
 async def btn_admin_stats(message: types.Message, state: FSMContext):
     await state.clear()
     users, videos = await get_global_stats()
     await message.answer(
-        f"📊 **Bot Statistikasi:**\n\n"
+        f"📊 <b>Bot Statistikasi:</b>\n\n"
         f"👤 Foydalanuvchilar: {users}\n"
         f"🎬 Kinolar: {videos}\n",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
 
 @admin_router.message(F.text == "👤 Foydalanuvchi rejimi")
@@ -105,11 +104,11 @@ async def process_admin_code(message: types.Message, state: FSMContext):
 
     await state.update_data(code=message.text)
     await message.answer(
-        f"✅ Kod saqlandi: `{message.text}`\n\n"
+        f"✅ Kod saqlandi: <code>{html.quote(message.text)}</code>\n\n"
         f"Endi ushbu kod uchun kinoni yuboring. Sizda 2 xil yo'l bor:\n\n"
-        f"1️⃣ **Fayl yuborish:** Kinoni to'g'ridan-to'g'ri shu yerga yuboring (Video ko'rinishida).\n"
-        f"2️⃣ **Kanal orqali:** Saqlash kanalidagi postni shu yerga **forward** qiling yoki post **linkini** yuboring (t.me/kanal/123).",
-        parse_mode="Markdown"
+        f"1️⃣ <b>Fayl yuborish:</b> Kinoni to'g'ridan-to'g'ri shu yerga yuboring (Video ko'rinishida).\n"
+        f"2️⃣ <b>Kanal orqali:</b> Saqlash kanalidagi postni shu yerga <b>forward</b> qiling yoki post <b>linkini</b> yuboring (t.me/kanal/123).",
+        parse_mode="HTML"
     )
     await state.set_state(AdminStates.waiting_for_channel_post)
 
@@ -138,9 +137,9 @@ async def cmd_add(message: types.Message, command: CommandObject, state: FSMCont
 
     await state.update_data(code=code, expires_at=expires_at)
     await message.answer(
-        f"✅ Kod saqlandi: `{code}`\n\n"
+        f"✅ Kod saqlandi: <code>{html.quote(code)}</code>\n\n"
         f"Endi ushbu kod uchun kinoni yuboring (forward qiling, link yuboring yoki video fayl yuboring):",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
     await state.set_state(AdminStates.waiting_for_channel_post)
 
@@ -261,7 +260,7 @@ async def process_title(message: types.Message, state: FSMContext):
         storage_message_id=data.get('storage_message_id')
     )
     
-    await message.answer(f"✅ Video `{data['code']}` kodi bilan muvaffaqiyatli qo'shildi.", parse_mode="Markdown")
+    await message.answer(f"✅ Video <code>{html.quote(data['code'])}</code> kodi bilan muvaffaqiyatli qo'shildi.", parse_mode="HTML")
     await state.clear()
 
 @admin_router.message(AdminStates.waiting_for_code_delete)
@@ -279,7 +278,7 @@ async def process_admin_delete(message: types.Message, state: FSMContext):
 
     code = message.text
     await delete_code(code)
-    await message.answer(f"✅ Kod `{code}` muvaffaqiyatli o'chirildi.", parse_mode="Markdown")
+    await message.answer(f"✅ Kod <code>{html.quote(code)}</code> muvaffaqiyatli o'chirildi.", parse_mode="HTML")
     await state.clear()
 
 @admin_router.callback_query(F.data == "admin_add")
@@ -310,7 +309,7 @@ async def cmd_delete(message: types.Message, command: CommandObject):
         await message.answer("❌ Foydalanish: /delete <kod>")
         return
     await delete_code(command.args)
-    await message.answer(f"✅ `{command.args}` kodi va unga tegishli fayllar o'chirildi.", parse_mode="Markdown")
+    await message.answer(f"✅ <code>{html.quote(command.args)}</code> kodi va unga tegishli fayllar o'chirildi.", parse_mode="HTML")
 
 @admin_router.message(Command("list"))
 async def cmd_list(message: types.Message):
@@ -318,17 +317,17 @@ async def cmd_list(message: types.Message):
     if not codes:
         await message.answer("📭 Hozircha kinolar qo'shilmagan.")
         return
-    text = "📜 **Saqlangan kinolar:**\n"
+    text = "📜 <b>Saqlangan kinolar:</b>\n"
     for code, title in codes:
-        text += f"• `{code}` - {title}\n"
-    await message.answer(text, parse_mode="Markdown")
+        text += f"• <code>{code}</code> - {html.quote(title)}\n"
+    await message.answer(text, parse_mode="HTML")
 
 @admin_router.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     users, videos = await get_global_stats()
     await message.answer(
-        f"📊 **Bot statistikasi:**\n"
+        f"📊 <b>Bot statistikasi:</b>\n"
         f"• Jami foydalanuvchilar: {users}\n"
         f"• Jami kinolar: {videos}\n",
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
