@@ -1,5 +1,5 @@
 from aiogram import Router, F, types, Bot
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta
 import logging
@@ -21,10 +21,12 @@ admin_router.message.filter(F.from_user.id.in_(ADMINS))
 admin_router.callback_query.filter(F.from_user.id.in_(ADMINS))
 
 
+@admin_router.message(CommandStart())
 @admin_router.message(Command("admin"))
-async def cmd_admin(message: types.Message):
+async def cmd_admin(message: types.Message, state: FSMContext):
+    await state.clear()
     await message.answer(
-        "👨‍💻 <b>Admin Panel</b>\n\nQuyidagi menyudan foydalanishingiz mumkin:",
+        "👨‍💻 <b>Admin Panel</b>\n\nXush kelibsiz, Admin! Quyidagi menyudan foydalanishingiz mumkin:",
         reply_markup=get_admin_reply_keyboard(),
         parse_mode="HTML"
     )
@@ -102,9 +104,10 @@ async def process_admin_code(message: types.Message, state: FSMContext):
         if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
         return
 
-    await state.update_data(code=message.text)
+    code = message.text.strip()
+    await state.update_data(code=code)
     await message.answer(
-        f"✅ Kod saqlandi: <code>{html.quote(message.text)}</code>\n\n"
+        f"✅ Kod saqlandi: <code>{html.quote(code)}</code>\n\n"
         f"Endi ushbu kod uchun kinoni yuboring. Sizda 2 xil yo'l bor:\n\n"
         f"1️⃣ <b>Fayl yuborish:</b> Kinoni to'g'ridan-to'g'ri shu yerga yuboring (Video ko'rinishida).\n"
         f"2️⃣ <b>Kanal orqali:</b> Saqlash kanalidagi postni shu yerga <b>forward</b> qiling yoki post <b>linkini</b> yuboring (t.me/kanal/123).",
@@ -276,7 +279,7 @@ async def process_admin_delete(message: types.Message, state: FSMContext):
         if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
         return
 
-    code = message.text
+    code = message.text.strip()
     await delete_code(code)
     await message.answer(f"✅ Kod <code>{html.quote(code)}</code> muvaffaqiyatli o'chirildi.", parse_mode="HTML")
     await state.clear()

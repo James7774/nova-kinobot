@@ -140,7 +140,7 @@ async def process_code(message: types.Message, state: FSMContext, bot: Bot):
     lang = await get_user_language(message.from_user.id)
     t = TEXTS[lang]
     
-    code = message.text
+    code = message.text.strip()
     if not code.isdigit():
         await message.answer(t['invalid_code'])
         return
@@ -185,6 +185,8 @@ async def process_code(message: types.Message, state: FSMContext, bot: Bot):
                             from_chat_id=storage_channel_id,
                             message_id=storage_message_id
                         )
+                        # Forward doesn't support caption or buttons, so send them separately
+                        await message.answer(caption, reply_markup=kb, parse_mode="HTML")
                         await increment_views(video_id)
                         await state.clear()
                         return
@@ -251,7 +253,7 @@ async def cb_check_sub(callback: types.CallbackQuery, bot: Bot, state: FSMContex
     await callback.answer()
 
 # Add a default numeric handler so users don't have to be in 'entering_code' state
-@user_router.message(F.text.regexp(r'^\d+$'))
+@user_router.message(F.text.regexp(r'^\s*\d+\s*$'))
 async def direct_code_lookup(message: types.Message, state: FSMContext, bot: Bot):
     await process_code(message, state, bot)
 
@@ -295,9 +297,21 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
                 await callback.answer()
                 return
             except Exception as e:
-                logger.error(f"cb copyMessage failed: {e}")
+                logger.error(f"cb copyMessage failed: {e}. Trying fallback.")
+                try:
+                    await bot.forward_message(
+                        chat_id=callback.from_user.id,
+                        from_chat_id=storage_channel_id,
+                        message_id=storage_message_id
+                    )
+                    await callback.message.answer(caption, reply_markup=kb, parse_mode="HTML")
+                    await increment_views(video_id)
+                    await callback.answer()
+                    return
+                except Exception as e2:
+                    logger.error(f"cb forwardMessage failed: {e2}")
 
-        # Send based on file type
+        # Send based on file type (fallback if storage channel fails or is not set)
         if file_id:
             if file_type == 'video':
                 await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
@@ -307,6 +321,10 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
                 await callback.message.answer_animation(animation=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
             else:
                 await callback.message.answer_video(video=file_id, caption=caption, parse_mode="HTML", reply_markup=kb)
+            
+            await increment_views(video_id)
+            await callback.answer()
+            return
         else:
             await callback.answer("❌ Video topilmadi (Storage error)")
             return
@@ -314,9 +332,6 @@ async def cb_send_video(callback: types.CallbackQuery, bot: Bot, state: FSMConte
         logger.error(f"Error sending video {video_id}: {e}")
         await callback.answer("❌ Videoni yuborishda xatolik yuz berdi.")
         return
-
-    await increment_views(video_id)
-    await callback.answer()
 
 @user_router.callback_query(F.data == "delete_msg")
 async def cb_delete_msg(callback: types.CallbackQuery):
