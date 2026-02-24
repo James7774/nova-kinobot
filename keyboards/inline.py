@@ -75,3 +75,11 @@ def get_rating_selection_keyboard(video_id):
     builder.adjust(1)
     return builder.as_markup()
 
+def get_broadcast_keyboard(bot_username, include_delete=False):
+    builder = InlineKeyboardBuilder()
+    share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}&text=Ajoyib kino bot ekan, tavsiya qilaman! 🍿"
+    builder.row(InlineKeyboardButton(text="♻️ Do'stlarga ulashish", url=share_url))
+    if include_delete:
+        builder.row(InlineKeyboardButton(text="❌", callback_data="delete_msg"))
+    return builder.as_markup()
+

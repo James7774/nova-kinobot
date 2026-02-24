@@ -8,6 +8,7 @@ class AdminStates(StatesGroup):
     waiting_for_quality = State()
     waiting_for_expiration = State()
     waiting_for_code_delete = State()
+    waiting_for_broadcast_message = State()
 
 class UserStates(StatesGroup):
     entering_code = State()

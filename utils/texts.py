@@ -1,6 +1,6 @@
 TEXTS = {
     'uz': {
-        'welcome': "🌟 <b>Xush kelibsiz {name}!</b>\n\nSizni botimizda ko'rib turganimizdan xursandmiz. Bu yerda siz o'zingizga yoqqan kinolarni faqat kodini yuborish orqali topishingiz mumkin.\n\n🎬 <b>Kino kodini yuboring:</b>",
+        'welcome': "🌟 <b>Xush kelibsiz, {name}!</b>\n\nSizni botimizda eng qiziqarli va yuqori sifatli kinolar kutmoqda! 🎬✨\n\nBu yerda sevimli filmlaringizni topish juda oson – shunchaki <b>kino kodini</b> yuboring va tomosha qiling! ✅\n\n👇 <b>Kodni bu yerga yozing:</b>",
         'enter_code': "🔢 Iltimos, videoning raqamli kodini yuboring:",
         'search_name': "🔎 Iltimos, qidirish uchun nom yoki sarlavhani yuboring:",
         'help': "📖 <b>Qanday foydalanish kerak:</b>\n1. Shunchaki kino kodini yuboring (masalan: 657)\n2. Sifatni tanlang\n3. Videoni qabul qiling!\n\nKunlik limit: 5 ta so'rov.",

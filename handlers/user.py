@@ -67,19 +67,48 @@ async def cb_set_lang(callback: types.CallbackQuery, bot: Bot, state: FSMContext
     lang = callback.data.split(":")[1]
     user_id = callback.from_user.id
     
+    await callback.answer()
+    
+    # Save the language preference
     await set_user_language(user_id, lang)
     t = TEXTS[lang]
-    await callback.message.answer(t['lang_selected'])
     
-    # Check if user is subscribed to Telegram channel
-    missing = await get_missing_channels(bot, user_id)
-    if missing:
-        await callback.message.answer(t['sub_required'], reply_markup=get_subscribe_keyboard(lang))
-    else:
+    # Start the process of preparing the next message
+    status_text = t['lang_selected']
+    logger.info(f"Language set to {lang} for user {user_id}. Checking subscriptions...")
+    
+    # If user is admin, skip subscription check
+    is_admin = user_id in ADMINS
+    
+    try:
+        missing = []
+        if not is_admin:
+            missing = await get_missing_channels(bot, user_id)
+        
+        if missing:
+            logger.info(f"User {user_id} lacks subscriptions: {missing}")
+            # Instead of just replying, edit the current message to indicate progress/result
+            await callback.message.edit_text(
+                f"{status_text}\n\n{t['sub_required']}",
+                reply_markup=get_subscribe_keyboard(lang),
+                parse_mode="HTML"
+            )
+        else:
+            logger.info(f"User {user_id} is good to go.")
+            name = html.quote(callback.from_user.full_name)
+            welcome_msg = f"✅ {status_text}\n\n{t['welcome'].format(name=name)}"
+            
+            # Edit the message to show welcome
+            await callback.message.edit_text(
+                welcome_msg,
+                parse_mode="HTML"
+            )
+            # Optionally show main menu if needed, but welcome message already asks for code
+    except Exception as e:
+        logger.error(f"Critical error in language callback: {e}")
+        # Fallback: at least show the welcome message
         name = html.quote(callback.from_user.full_name)
         await callback.message.answer(t['welcome'].format(name=name), parse_mode="HTML")
-    
-    await callback.answer()
 
 @user_router.callback_query(F.data == "enter_code")
 async def cb_enter_code(callback: types.CallbackQuery, state: FSMContext):
@@ -121,19 +150,35 @@ async def check_limit(user_id):
     return True
 
 async def check_single_channel(bot: Bot, user_id: int, idx: int, channel: str):
+    if not channel: return None
     try:
+        if not channel.startswith('@') and not str(channel).startswith('-100'):
+            # If it's just a username without @
+            channel = f"@{channel}"
+            
         member = await bot.get_chat_member(chat_id=channel, user_id=user_id)
         if member.status in ["creator", "administrator", "member", "restricted"]:
             return None
         return (idx, channel)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Could not check channel {channel} for user {user_id}: {e}")
         return (idx, channel)
 
 async def get_missing_channels(bot: Bot, user_id: int):
-    # Har bir kanalni parallel tekshirish (tezroq ishlashi uchun)
+    if not CHANNELS:
+        return []
+    # Parallel check for each channel
     tasks = [check_single_channel(bot, user_id, i, ch) for i, ch in enumerate(CHANNELS, 1)]
-    results = await asyncio.gather(*tasks)
-    return [r for r in results if r is not None]
+    try:
+        # Add a timeout to gather to avoid hanging indefinitely
+        results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=5.0)
+        return [r for r in results if r is not None]
+    except asyncio.TimeoutError:
+        logger.error("Subscription check timed out!")
+        return [] # Or assume missing if you want to be strict, but here we favor availability
+    except Exception as e:
+        logger.error(f"Error in get_missing_channels: {e}")
+        return []
 
 @user_router.message(UserStates.entering_code)
 async def process_code(message: types.Message, state: FSMContext, bot: Bot):

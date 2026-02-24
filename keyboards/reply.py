@@ -11,6 +11,9 @@ def get_admin_reply_keyboard():
             KeyboardButton(text="📊 Statistika")
         ],
         [
+            KeyboardButton(text="📢 Xabar yuborish")
+        ],
+        [
             KeyboardButton(text="👤 Foydalanuvchi rejimi")
         ]
     ]
@@ -19,3 +22,7 @@ def get_admin_reply_keyboard():
         resize_keyboard=True,
         input_field_placeholder="Admin panel menyusini tanlang..."
     )
+
+def get_cancel_keyboard():
+    keyboard = [[KeyboardButton(text="🏠 Bekor qilish va qaytish")]]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)

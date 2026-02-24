@@ -140,3 +140,9 @@ async def get_rating_stats(video_id):
             if row and row[1] > 0:
                 return round(row[0], 1), row[1]
             return 0, 0
+
+async def get_all_users():
+    async with aiosqlite.connect(DATABASE_NAME) as db:
+        async with db.execute('SELECT telegram_id FROM users') as cursor:
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]

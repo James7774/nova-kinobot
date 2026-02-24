@@ -8,9 +8,9 @@ import html
 
 logger = logging.getLogger(__name__)
 
-from keyboards.inline import get_admin_panel
-from keyboards.reply import get_admin_reply_keyboard
-from database.db import add_video, delete_code, get_all_codes, get_global_stats
+from keyboards.inline import get_admin_panel, get_broadcast_keyboard
+from keyboards.reply import get_admin_reply_keyboard, get_cancel_keyboard
+from database.db import add_video, delete_code, get_all_codes, get_global_stats, get_all_users
 from utils.states import AdminStates
 from config import ADMINS
 
@@ -26,7 +26,7 @@ admin_router.callback_query.filter(F.from_user.id.in_(ADMINS))
 async def cmd_admin(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "👨‍💻 <b>Admin Panel</b>\n\nXush kelibsiz, Admin! Quyidagi menyudan foydalanishingiz mumkin:",
+        "⚡ <b>Admin Panel Faollashtirildi</b>\n\nBarcha funksiyalar tayyor. Quyidagi menyudan foydalaning:",
         reply_markup=get_admin_reply_keyboard(),
         parse_mode="HTML"
     )
@@ -85,6 +85,17 @@ async def btn_user_mode(message: types.Message, state: FSMContext):
         reply_markup=get_language_keyboard()
     )
 
+@admin_router.message(F.text == "📢 Xabar yuborish")
+async def btn_broadcast_start(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "📢 Barcha foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yuboring (matn, rasm yoki video):\n\n"
+        "<i>Agar adashib bosgan bo'lsangiz, bekor qilish tugmasini bosing.</i>",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_for_broadcast_message)
+
 @admin_router.callback_query(F.data == "admin_add")
 async def cb_admin_add(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("🔢 Kino uchun kodni kiriting (masalan: 123):")
@@ -94,7 +105,7 @@ async def cb_admin_add(callback: types.CallbackQuery, state: FSMContext):
 @admin_router.message(AdminStates.waiting_for_code)
 async def process_admin_code(message: types.Message, state: FSMContext):
     # Check for menu buttons
-    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi", "📢 Xabar yuborish", "🏠 Bekor qilish va qaytish", "❌ Bekor qilish"]
     if message.text in menu_buttons or (message.text and message.text.startswith('/')):
         await state.clear()
         if message.text == "📜 Kinolar ro'yxati": return await btn_admin_list(message, state)
@@ -102,6 +113,7 @@ async def process_admin_code(message: types.Message, state: FSMContext):
         if message.text == "🎬 Kino qo'shish": return await btn_admin_add(message, state)
         if message.text == "🗑 Kinoni o'chirish": return await btn_admin_delete_start(message, state)
         if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
+        if message.text == "📢 Xabar yuborish": return await btn_broadcast_start(message, state)
         return
 
     code = message.text.strip()
@@ -192,7 +204,7 @@ async def process_channel_post(message: types.Message, state: FSMContext, bot: B
         
         if not file_id and not storage_channel_id:
             # Check if this is a menu button click to avoid error message
-            menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+            menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi", "📢 Xabar yuborish", "🏠 Bekor qilish va qaytish", "❌ Bekor qilish"]
             if message.text in menu_buttons or message.text.startswith('/'):
                 await state.clear()
                 # Re-trigger the appropriate handler by sending the message again to the router
@@ -207,6 +219,8 @@ async def process_channel_post(message: types.Message, state: FSMContext, bot: B
                     return await btn_admin_delete_start(message, state)
                 elif message.text == "👤 Foydalanuvchi rejimi":
                     return await btn_user_mode(message, state)
+                elif message.text == "📢 Xabar yuborish":
+                    return await btn_broadcast_start(message, state)
                 # If command, let other handlers handle it after clearing state
                 return
 
@@ -239,7 +253,7 @@ async def process_channel_post(message: types.Message, state: FSMContext, bot: B
 @admin_router.message(AdminStates.waiting_for_title)
 async def process_title(message: types.Message, state: FSMContext):
     # Check for menu buttons
-    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi", "📢 Xabar yuborish", "🏠 Bekor qilish va qaytish", "❌ Bekor qilish"]
     if message.text in menu_buttons or (message.text and message.text.startswith('/')):
         await state.clear()
         if message.text == "📜 Kinolar ro'yxati": return await btn_admin_list(message, state)
@@ -247,6 +261,7 @@ async def process_title(message: types.Message, state: FSMContext):
         if message.text == "🎬 Kino qo'shish": return await btn_admin_add(message, state)
         if message.text == "🗑 Kinoni o'chirish": return await btn_admin_delete_start(message, state)
         if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
+        if message.text == "📢 Xabar yuborish": return await btn_broadcast_start(message, state)
         return
 
     data = await state.get_data()
@@ -269,7 +284,7 @@ async def process_title(message: types.Message, state: FSMContext):
 @admin_router.message(AdminStates.waiting_for_code_delete)
 async def process_admin_delete(message: types.Message, state: FSMContext):
     # Check for menu buttons
-    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi"]
+    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi", "📢 Xabar yuborish", "🏠 Bekor qilish va qaytish", "❌ Bekor qilish"]
     if message.text in menu_buttons or (message.text and message.text.startswith('/')):
         await state.clear()
         if message.text == "📜 Kinolar ro'yxati": return await btn_admin_list(message, state)
@@ -277,6 +292,7 @@ async def process_admin_delete(message: types.Message, state: FSMContext):
         if message.text == "🎬 Kino qo'shish": return await btn_admin_add(message, state)
         if message.text == "🗑 Kinoni o'chirish": return await btn_admin_delete_start(message, state)
         if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
+        if message.text == "📢 Xabar yuborish": return await btn_broadcast_start(message, state)
         return
 
     code = message.text.strip()
@@ -332,5 +348,94 @@ async def cmd_stats(message: types.Message):
         f"📊 <b>Bot statistikasi:</b>\n"
         f"• Jami foydalanuvchilar: {users}\n"
         f"• Jami kinolar: {videos}\n",
+        parse_mode="HTML"
+    )
+
+@admin_router.message(AdminStates.waiting_for_broadcast_message)
+async def process_broadcast_message(message: types.Message, state: FSMContext, bot: Bot):
+    # Check for menu buttons
+    menu_buttons = ["🎬 Kino qo'shish", "🗑 Kinoni o'chirish", "📜 Kinolar ro'yxati", "📊 Statistika", "👤 Foydalanuvchi rejimi", "📢 Xabar yuborish", "🏠 Bekor qilish va qaytish", "❌ Bekor qilish"]
+    if message.text in menu_buttons or (message.text and message.text.startswith('/')):
+        if message.text in ["🏠 Bekor qilish va qaytish", "❌ Bekor qilish"]:
+            await state.clear()
+            return await cmd_admin(message, state)
+        
+        await state.clear()
+        if message.text == "📜 Kinolar ro'yxati": return await btn_admin_list(message, state)
+        if message.text == "📊 Statistika": return await btn_admin_stats(message, state)
+        if message.text == "🎬 Kino qo'shish": return await btn_admin_add(message, state)
+        if message.text == "🗑 Kinoni o'chirish": return await btn_admin_delete_start(message, state)
+        if message.text == "👤 Foydalanuvchi rejimi": return await btn_user_mode(message, state)
+        if message.text == "📢 Xabar yuborish": return await btn_broadcast_start(message, state)
+        return
+
+    users = await get_all_users()
+    count = 0
+    blocked_count = 0
+    
+    logger.info(f"Broadcast started by {message.from_user.id} for {len(users)} users.")
+    
+    status_message = await message.answer(f"⏳ <b>Xabar yuborish boshlandi...</b>\nJami: {len(users)}", parse_mode="HTML")
+    
+    bot_info = await bot.get_me()
+    user_kb = get_broadcast_keyboard(bot_info.username, include_delete=False)
+    
+    for user_id in users:
+        # Don't send duplicate to admin here, we do it at the end
+        if user_id == message.from_user.id:
+            count += 1
+            continue
+
+        try:
+            await bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=user_kb
+            )
+            count += 1
+            if count % 20 == 0:
+                try:
+                    await status_message.edit_text(f"⏳ <b>Xabar yuborilmoqda...</b>\n✅ Yuborildi: {count}\n🚫 To'silgan: {blocked_count}", parse_mode="HTML")
+                except: pass
+        except Exception as e:
+            blocked_count += 1
+            logger.error(f"Failed broadcast to {user_id}: {e}")
+        
+        await asyncio.sleep(0.05)
+
+    # Send a copy to admin with X button
+    admin_kb = get_broadcast_keyboard(bot_info.username, include_delete=True)
+    await bot.copy_message(
+        chat_id=message.from_user.id,
+        from_chat_id=message.chat.id,
+        message_id=message.message_id,
+        reply_markup=admin_kb,
+        caption=f"👆 <b>Yuborilgan xabar nusxasi (Siz uchun)</b>\n\n{message.caption if message.caption else ''}",
+        parse_mode="HTML"
+    )
+
+    await status_message.edit_text(
+        f"✅ <b>Xabar yuborish yakunlandi!</b>\n\n"
+        f"📊 Statistika:\n"
+        f"👤 Qabul qildi: {count}\n"
+        f"🚫 Botni to'sgan: {blocked_count}\n"
+        f"🏁 Jami: {len(users)}",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="❌ Yopish", callback_data="delete_msg")]]),
+        parse_mode="HTML"
+    )
+    await state.clear()
+
+@admin_router.message()
+async def admin_fallback(message: types.Message, state: FSMContext):
+    """Fallback handler to show admin keyboard on any random message from admin"""
+    # If it's a digit, let user router handle it (movie search)
+    if message.text and message.text.strip().isdigit():
+        return # Skip and let next router handle it
+        
+    await state.clear()
+    await message.answer(
+        "👨‍💻 <b>Admin Panel</b>\n\nMenyudan foydalanishingiz mumkin. Agar tugmalar ko'rinmasa /admin deb yozing.",
+        reply_markup=get_admin_reply_keyboard(),
         parse_mode="HTML"
     )
